@@ -15,28 +15,28 @@ load_dotenv(dotenv_path)
 USER = os.getenv("USER_TPAY")
 PASS= os.getenv("PASS_TPAY")
 
-data = {
-"cost":"12000",
-"purchase_details_url":"https://example.com/compra/348820",
-"voucher_url":"https://example.com/comprobante/348820",
-"idempotency_token":"ea0c78c5-e85a-48c4-b7f9-24b9014a2339",
-"order_id":"348820",
-"terminal_id":"sede_45",
-"purchase_description":"Compra en Tienda X",
-"purchase_items":[
-    {
-        "name":"Aceite de girasol",
-        "value":"13.390",
-        "quantity":"3"
-    },
-    {
-        "name":"Arroz X 80g",
-        "value":"4.190"
-    }
-],
-"user_ip_address":"61.1.224.56",
-"expires_at":"2018-11-06T20:10:57.549653+00:00"
-}
+# data = {
+# "cost":"12000",
+# "purchase_details_url":"https://example.com/compra/348820",
+# "voucher_url":"https://example.com/comprobante/348820",
+# "idempotency_token":"ea0c78c5-e85a-48c4-b7f9-24b9014a2339",
+# "order_id":"348820",
+# "terminal_id":"sede_45",
+# "purchase_description":"Compra en Tienda X",
+# "purchase_items":[
+#     {
+#         "name":"Aceite de girasol",
+#         "value":"13.390",
+#         "quantity":"3"
+#     },
+#     {
+#         "name":"Arroz X 80g",
+#         "value":"4.190"
+#     }
+# ],
+# "user_ip_address":"61.1.224.56",
+# "expires_at":"2018-11-06T20:10:57.549653+00:00"
+# }
 
 
 
@@ -57,18 +57,16 @@ head = {"Content-Type":"application/json",
         "Authorization": 'Basic %s' % authstr}
 
 
-
-
 def make_pay_req(head,data,url_pay_req):
     r = requests.post(url_pay_req,json=data,headers=head)
     return r
 
-def calculate_cost_order(order_id):
-    price_unit = EventFeatures.price_unit
-    quants = OrderTickets.quantity_sold
+def calculate_cost_order(quants,id_event):
+    price_unit = EventFeatures.objects.get(id_event=id_event).price_unit
     total = price_unit*quants
     return total
-    
+
+
 def create_event():
     cd = EventFeatures()
     cd.id_event = gen_order_or_event_id()
@@ -91,17 +89,6 @@ def gen_order_or_event_id():
     token = token[:8]
     return token
 
-def generate_order(quantity):
-    od = OrderTickets()
-    od.order_id = gen_order_or_event_id()
-    od.idempotency_token = gen_idem_token()
-    od.quantity_sold = quantity
-    od.state = 'created'
-    od.date_create = generate_dates()[0]
-    od.exp_date = generate_dates()[1]
-    #od.price_total = calculate_cost_order()
-
-
 def generate_dates():
     now = datetime.datetime.utcnow()
     dt = datetime.timedelta(minutes = 10)
@@ -123,15 +110,56 @@ def validate_cant_sale(id_event,quant_to_sale):
         new_cant = disp - quant_to_sale
         ev.quantity_total = new_cant
         ev.save()
-        return print("Habían %d entradas, ahora quedan %d"%(disp,new_cant))
+        return True, print("Habían %d entradas, ahora quedan %d"%(disp,new_cant))
     else:
-        return print("No hay boletas suficientes, solo hay %d" % (disp))
+        return False, print("No hay boletas suficientes, solo hay %d" % (disp))
 
-# def gen_json_order(order_id):
 
-#     data = {
-#         "cost": 'f2ae6c87'
-#     }
+def generate_order(id_event, quantity):
+    val_bool, resp = validate_cant_sale(id_event,quantity)
+    if val_bool is True:
+        od = OrderTickets()
+        od.order_id = gen_order_or_event_id()
+        od.idempotency_token = gen_idem_token()
+        od.quantity_sold = quantity
+        od.state = 'created'
+        #date_create = generate_dates()[0]
+        od.date_create = generate_dates()[0][:9]
+        #exp_date = generate_dates()[1]
+        od.exp_date = generate_dates()[1][:9]
+        od.price_total = calculate_cost_order(quantity, id_event)
+        ev = EventFeatures.objects.get(id_event=id_event)
+        ev_desrc = ev.description
+        od.order_description = "%d Entradas para %s"%(quantity,ev_desrc)
+        od.id_event = id_event
+        od.user_id = 0
+        od.order_ip = get_ip()
+        data = {
+            "cost":str(od.price_total),
+            "purchase_details_url":"https://example.com/compra/348820",
+            "voucher_url":"https://example.com/comprobante/348820",
+            "idempotency_token":od.idempotency_token,
+            "order_id":od.order_id,
+            "terminal_id":"sede_45",
+            "purchase_description":"Compra en Tienda X",
+            "purchase_items":[
+                {
+                    "name":od.order_description,
+                    "value":str(od.price_total)
+                }
+            ],
+            "user_ip_address":get_ip(),
+            "expires_at":generate_dates()[0],
+        }
+        print(data)
+        od.save()
+        return data
+    else:
+        return "no ha sido posible realizar la orden"
+
+
+
+
 
 
 
