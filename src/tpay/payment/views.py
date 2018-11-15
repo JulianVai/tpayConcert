@@ -63,29 +63,29 @@ def make_pay_req(head,data,url_pay_req):
     r = requests.post(url_pay_req,json=data,headers=head)
     return r
 
-def calculate_cost_order():
-    price_unit = ConcertTickets.price_unit
+def calculate_cost_order(order_id):
+    price_unit = EventFeatures.price_unit
     quants = OrderTickets.quantity_sold
     total = price_unit*quants
     return total
-
-def set_concerttikets():
-    cd = ConcertTickets()
-    cd.id_event = 'aaabbb'
+    
+def create_event():
+    cd = EventFeatures()
+    cd.id_event = gen_order_or_event_id()
     print("Descripción del evento")
     cd.description = input()
     print("Cantidad de tikets disponibles")
     cd.quantity_total = int(input())
     print("Precio de cada tiket")
     cd.price_unit = int(input())
-    cd.save(using='tpaymongo')
+    cd.save()
 
 def gen_idem_token():
     token = uuid.uuid4()
     token = str(token)
     return token
 
-def gen_order_id():
+def gen_order_or_event_id():
     token = uuid.uuid4()
     token = str(token)
     token = token[:8]
@@ -93,13 +93,13 @@ def gen_order_id():
 
 def generate_order(quantity):
     od = OrderTickets()
-    od.order_id = gen_order_id()
+    od.order_id = gen_order_or_event_id()
     od.idempotency_token = gen_idem_token()
     od.quantity_sold = quantity
     od.state = 'created'
     od.date_create = generate_dates()[0]
     od.exp_date = generate_dates()[1]
-    od.price_total = calculate_cost_order()
+    #od.price_total = calculate_cost_order()
 
 
 def generate_dates():
@@ -116,10 +116,21 @@ def get_ip():
     ip = requests.get('https://api.ipify.org').text
     return ip
 
+def validate_cant_sale(id_event,quant_to_sale):
+    ev = EventFeatures.objects.get(id_event=id_event)
+    disp = ev.quantity_total
+    if quant_to_sale <= disp:
+        new_cant = disp - quant_to_sale
+        ev.quantity_total = new_cant
+        ev.save()
+        return print("Habían %d entradas, ahora quedan %d"%(disp,new_cant))
+    else:
+        return print("No hay boletas suficientes, solo hay %d" % (disp))
+
 # def gen_json_order(order_id):
 
 #     data = {
-#         "cost":
+#         "cost": 'f2ae6c87'
 #     }
 
 
